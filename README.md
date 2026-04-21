@@ -1,14 +1,15 @@
 ---
-title: Streamlit Template Space
+title: Video Subtitle Editor
 emoji: 🚀
 colorFrom: red
 colorTo: red
 sdk: docker
 app_port: 8501
 tags:
-  - streamlit
+- streamlit
 pinned: false
-short_description: Streamlit template space
+short_description: App to generate and edit automatic subtitles on videos
+license: mit
 ---
 
 # Welcome to Streamlit!
