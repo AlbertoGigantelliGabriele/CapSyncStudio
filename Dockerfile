@@ -11,9 +11,9 @@ RUN apt-get update && apt-get install -y \
 # Copia i file delle dipendenze
 COPY pyproject.toml uv.lock ./
 
-# Installa uv e sincronizza le dipendenze direttamente
+# Usa uv in modalità compatibilità pip per installare tutto a livello di sistema
 RUN pip install --no-cache-dir uv && \
-    uv sync --frozen --system --no-dev --no-install-project
+    uv pip install --system -r pyproject.toml
 
 # Copia il codice applicativo
 COPY app.py ./
