@@ -93,7 +93,7 @@ def render_editor_interface(whisper_prompt, settings_dict, esegui_operazione_blo
 
         if st.button("➕ Add Block", use_container_width=True, disabled=(not video_pronto or limite_raggiunto)):
             end_coda = start_coda + pysrt.SubRipTime(seconds=1)
-            if durata_max.ordinal > 0 and end_coda.ordinal > durata_max.ordinal:
+            if 0 < durata_max.ordinal < end_coda.ordinal:
                 end_coda = durata_max
             st.session_state.subs.append(pysrt.SubRipItem(index=len(st.session_state.subs) + 1, start=start_coda, end=end_coda, text=""))
             st.rerun()
