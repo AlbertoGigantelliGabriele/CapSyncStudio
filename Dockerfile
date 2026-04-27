@@ -11,14 +11,9 @@ RUN apt-get update && apt-get install -y \
 # Copia i file delle dipendenze
 COPY pyproject.toml uv.lock ./
 
-# Installa uv, esporta il lock in un requirements.txt e installa con uv pip install
-# --index-url specifica l'indice CPU di PyTorch per risolvere torch==2.11.0+cpu
-# --extra-index-url è l'indice standard PyPI per tutte le altre dipendenze
+# Installa uv e sincronizza le dipendenze direttamente
 RUN pip install --no-cache-dir uv && \
-    uv export --frozen --no-hashes --no-dev --format requirements-txt > requirements.txt && \
-    uv pip install --system --no-cache -r requirements.txt \
-        --index-url https://download.pytorch.org/whl/cpu \
-        --extra-index-url https://pypi.org/simple
+    uv sync --frozen --system --no-dev --no-install-project
 
 # Copia il codice applicativo
 COPY app.py ./
