@@ -11,7 +11,7 @@ from src.core.video_processing import ottieni_durata_video, applica_sottotitoli
 from src.ui.components import applica_css_globale, renderizza_timer_video, renderizza_anteprima_stile
 from src.ui.editor import render_editor_interface
 
-st.set_page_config(layout="wide", page_title="Subtitles Editor", page_icon="🎬")
+st.set_page_config(layout="wide", page_title="CapSyncStudio", page_icon="🎬")
 
 if 'temp_dir_obj' not in st.session_state:
     st.session_state.temp_dir_obj = tempfile.TemporaryDirectory()
