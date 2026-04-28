@@ -21,7 +21,7 @@ def renderizza_timer_video():
         <style>
             #tbtn {
                 width: 100%; min-height: 38px; margin-top: 8px; cursor: pointer;
-                background: transparent; border: 1px solid rgba(250,250,250,0.2);
+                background: transparent; border: 1px solid rgba(128,128,128,0.5);
                 border-radius: 0.5rem; color: var(--text-color); font-family: inherit;
                 display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s;
             }
@@ -47,8 +47,11 @@ def renderizza_timer_video():
 def renderizza_anteprima_stile(font_scelto, size_scelta, fw, fs, tt, colore_scelto):
     st.markdown(f"""
         <div style="
-            margin-top: 15px; padding: 15px; background-color: rgba(128, 128, 128, 0.1);
-            border-radius: 8px; text-align: center; font-family: '{font_scelto}';
+            margin-top: 15px; padding: 15px;
+            background-color: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(128,128,128,0.3);
+            border-radius: 8px; text-align: center;
+            font-family: '{font_scelto}';
             font-size: {size_scelta}px; font-weight: {fw}; font-style: {fs};
             text-transform: {tt}; color: {colore_scelto};
         ">

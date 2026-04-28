@@ -3,86 +3,56 @@ import torch
 from faster_whisper import WhisperModel
 import pysrt
 
-
-def genera_sottotitoli_da_video(video_path, custom_prompt="", mode="Standard"):
+def genera_sottotitoli_da_video(video_path, custom_prompt=""):
     subs = pysrt.SubRipFile()
 
     def sec_to_srt_time(seconds):
-        h = int(seconds // 3600)
-        m = int((seconds % 3600) // 60)
-        s = int(seconds % 60)
+        h, rem = divmod(int(seconds), 3600)
+        m, s = divmod(rem, 60)
         ms = int((seconds - int(seconds)) * 1000)
         return pysrt.SubRipTime(h, m, s, ms)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    compute_type = "float16" if device == "cuda" else "int8"
-
-    model = WhisperModel("medium", device=device, compute_type=compute_type)
-    segments, _ = model.transcribe(
-        video_path,
-        language="it",
-        initial_prompt=custom_prompt,
-        beam_size=5,
-        word_timestamps=True
-    )
+    compute = "float16" if device == "cuda" else "int8"
+    model = WhisperModel("medium", device=device, compute_type=compute)
+    segments, _ = model.transcribe(video_path, language="it", initial_prompt=custom_prompt,
+                                   beam_size=5, word_timestamps=True)
 
     MAX_CHARS = 28
-    indice = 1
-    current_words = []
-    current_length = 0
-    start_time = None
+    clean_re = re.compile(r"[,.?!;:']")
+    idx = 1
+    buf, buf_len, buf_start = [], 0, None
 
-    # 1. Precompiliamo la regex fuori dal loop per maggiore efficienza
-    cleaner = re.compile(r"[,.?!;:']")
-
-    # 2. Funzione helper interna per evitare di ripetere la logica di creazione blocco
-    def flush_buffer(words_buffer, start_t, idx):
-        if not words_buffer:
+    def flush_buffer(words, start_t, i):
+        if not words:
             return None
-
-        end_t = words_buffer[-1].end
-
-        # Puliamo le parole una volta sola e le riutilizziamo
-        parole_pulite = [cleaner.sub('', w.word.strip()) for w in words_buffer]
-        testo_blocco = " ".join(parole_pulite)
-
-        item = pysrt.SubRipItem(
-            index=idx,
-            start=sec_to_srt_time(start_t),
-            end=sec_to_srt_time(end_t),
-            text=testo_blocco
-        )
-
-        # Associamo i timing usando le parole già pulite
-        item.word_timings = [(parole_pulite[i], int(w.start * 1000), int(w.end * 1000))
-                             for i, w in enumerate(words_buffer)]
+        clean = [clean_re.sub('', w.word.strip()) for w in words]
+        text = " ".join(clean)
+        item = pysrt.SubRipItem(index=i, start=sec_to_srt_time(start_t),
+                                end=sec_to_srt_time(words[-1].end), text=text)
+        item.word_timings = [(clean[j], int(words[j].start*1000), int(words[j].end*1000))
+                             for j in range(len(words))]
         return item
 
     for segment in segments:
         for word in segment.words:
-            testo_parola = cleaner.sub('', word.word.strip())
-            lunghezza_parola = len(testo_parola)
+            cleaned = clean_re.sub('', word.word.strip())
+            lw = len(cleaned)
 
-            if not current_words:
-                start_time = word.start
+            if not buf:
+                buf_start = word.start
 
-            if current_words and (current_length + lunghezza_parola + 1 > MAX_CHARS):
-                # Raggiunto il limite: svuotiamo il buffer usando la funzione helper
-                nuovo_item = flush_buffer(current_words, start_time, indice)
-                if nuovo_item:
-                    subs.append(nuovo_item)
-                    indice += 1
-
-                current_words = [word]
-                current_length = lunghezza_parola
-                start_time = word.start
+            if buf and (buf_len + lw + 1 > MAX_CHARS):
+                new_item = flush_buffer(buf, buf_start, idx)
+                if new_item:
+                    subs.append(new_item)
+                    idx += 1
+                buf, buf_len, buf_start = [word], lw, word.start
             else:
-                current_words.append(word)
-                current_length += lunghezza_parola + (1 if len(current_words) > 1 else 0)
+                buf.append(word)
+                buf_len += lw + (1 if len(buf) > 1 else 0)
 
-    # Svuotamento buffer a fine segmento (riutilizziamo la STESSA funzione!)
-    nuovo_item = flush_buffer(current_words, start_time, indice)
-    if nuovo_item:
-        subs.append(nuovo_item)
-
+    new_item = flush_buffer(buf, buf_start, idx)
+    if new_item:
+        subs.append(new_item)
     return subs

@@ -21,4 +21,3 @@ def applica_vincoli_timeline_continua():
 def riordina_indici():
     for idx, sub in enumerate(st.session_state.subs):
         sub.index = idx + 1
-

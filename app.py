@@ -13,151 +13,152 @@ from src.ui.editor import render_editor_interface
 
 st.set_page_config(layout="wide", page_title="CapSyncStudio", page_icon="🎬")
 
+# Directory temporanea
 if 'temp_dir_obj' not in st.session_state:
     st.session_state.temp_dir_obj = tempfile.TemporaryDirectory()
+TMP = st.session_state.temp_dir_obj.name
 
-TEMP_DIR = st.session_state.temp_dir_obj.name
-
-srt_file = os.path.join(TEMP_DIR, "sottotitoli_generati.srt")
-temp_upload_path = os.path.join(TEMP_DIR, "temp_video_upload.mp4")
-temp_ass_path = os.path.join(TEMP_DIR, "temp_export.ass")
+# Percorsi fissi
+SRT_FILE = os.path.join(TMP, "sottotitoli_generati.srt")
+VIDEO_UPLOAD = os.path.join(TMP, "temp_video_upload.mp4")
+ASS_FILE = os.path.join(TMP, "temp_export.ass")
 
 applica_css_globale()
 
+
 @st.dialog("Processing", width="small")
-def esegui_operazione_bloccante(azione, **kwargs):
+def esegui_operazione(azione, **kwargs):
     if azione == "transcription":
         with st.spinner("Transcribing"):
-            nuovi_subs = genera_sottotitoli_da_video(
+            st.session_state.subs = genera_sottotitoli_da_video(
                 st.session_state.video_corrente,
                 custom_prompt=kwargs.get("prompt", "")
             )
-            st.session_state.subs = nuovi_subs
             applica_vincoli_timeline_continua()
-            st.session_state.subs.save(srt_file, encoding='utf-8')
-        st.rerun()
+            st.session_state.subs.save(SRT_FILE, encoding='utf-8')
+        st.rerun()   # chiude il dialog e aggiorna l'editor con i nuovi subs
 
     elif azione == "export":
         with st.spinner("Exporting video"):
-            stile_base = kwargs.get("stile_base")
-            karaoke_attivo = kwargs.get("karaoke_attivo")
-            colore_karaoke = kwargs.get("colore_karaoke")
-            maiuscolo_pulito = kwargs.get("maiuscolo_pulito")
-            parola_singola = kwargs.get("parola_singola")
+            k = kwargs
+            stile = k["stile_base"]
+            nome_orig = st.session_state.get("nome_ultimo_file", "video_finale.mp4")
+            output = os.path.join(TMP, f"sub_{nome_orig}")
 
-            nome_originale = st.session_state.get("nome_ultimo_file", "video_finale.mp4")
-            output_file = os.path.join(TEMP_DIR, f"sub_{nome_originale}")
-
-            contenuto_ass = genera_contenuto_ass(
+            ass_content = genera_contenuto_ass(
                 st.session_state.subs,
-                "Testo Colorato (Karaoke)" if karaoke_attivo else "Nessuno",
-                colore_karaoke,
-                stile_base,
-                maiuscolo=maiuscolo_pulito,
-                parola_singola=parola_singola
+                "Testo Colorato (Karaoke)" if k["karaoke_attivo"] else "Nessuno",
+                k["colore_karaoke"],
+                stile,
+                maiuscolo=k["maiuscolo_pulito"],
+                parola_singola=k["parola_singola"]
+            )
+            with open(ASS_FILE, "w", encoding="utf-8") as f:
+                f.write(ass_content)
+
+            applica_sottotitoli(VIDEO_UPLOAD, ASS_FILE, output, speed=kwargs.get("speed", 1.0))
+
+        # Qui fuori dallo spinner: il dialog resta aperto per il download
+        st.success("Video exported successfully")
+        with open(output, "rb") as f:
+            st.download_button(
+                label="Download Video",
+                data=f,
+                file_name=os.path.basename(output),
+                mime="video/mp4",
+                use_container_width=True
             )
 
-            with open(temp_ass_path, "w", encoding="utf-8") as f:
-                f.write(contenuto_ass)
 
-            applica_sottotitoli(temp_upload_path, temp_ass_path, output_file, "")
-            st.session_state.video_corrente = output_file
-
-        st.rerun()
-
-
-# --- SIDEBAR con solo i controlli ---
+# ---------- SIDEBAR ----------
 with st.sidebar:
-    modalita_visualizzazione = st.selectbox("Display Mode", ["Full Phrase", "Single Word"])
-
-    lista_font = [
-        "Arial", "Verdana", "Impact", "Georgia", "Trebuchet MS",
-        "Courier New", "Comic Sans MS", "Bradley Hand",
-        "Lucida Handwriting", "Brush Script MT"
-    ]
-    font_scelto = st.selectbox("Font Family", lista_font)
-
-    size_scelta = st.slider("Text Size", 10, 100, 15)
-    bordo_spessore = st.slider("Outline Thickness", 0.0, 10.0, 4.0, 0.5)
-    glow_intensita = st.slider("Glow Intensity", 0.0, 10.0, 4.0, 0.5)
-    zoom_factor = st.slider("Focus Zoom Scale", 100, 200, 110, 5)
-
-    t1, t2 = st.columns(2)
-    with t1:
-        bold_scelto = st.toggle("Bold", True)
-        italic_scelto = st.toggle("Italic", False)
-    with t2:
-        maiuscolo_pulito = st.toggle("Uppercase", True)
-        karaoke_attivo = st.toggle("Karaoke", value=True)
+    display_mode = st.selectbox("Display Mode", ["Full Phrase", "Single Word"])
+    speed_factor = st.slider(
+        "Export Speed",
+        min_value=0.25,
+        max_value=2.0,
+        value=1.0,
+        step=0.05,
+        format="%.2fx"
+    )
+    font_list = ["Arial","Verdana","Impact","Georgia","Trebuchet MS",
+                 "Courier New","Comic Sans MS","Bradley Hand",
+                 "Lucida Handwriting","Brush Script MT"]
+    font = st.selectbox("Font Family", font_list)
+    size = st.slider("Text Size", 10, 100, 15)
+    outline = st.slider("Outline Thickness", 0.0, 10.0, 4.0, 0.5)
+    glow = st.slider("Glow Intensity", 0.0, 10.0, 4.0, 0.5)
+    zoom = st.slider("Focus Zoom Scale", 100, 200, 110, 5)
 
     c1, c2 = st.columns(2)
     with c1:
-        colore_scelto = st.color_picker("Main Color", "#FFFFFF")
+        bold = st.toggle("Bold", True)
+        italic = st.toggle("Italic", False)
     with c2:
-        colore_karaoke = st.color_picker("Highlight", "#FFBF00", disabled=not karaoke_attivo)
+        uppercase = st.toggle("Uppercase", True)
+        karaoke = st.toggle("Karaoke", value=True)
 
-    fw = "bold" if bold_scelto else "normal"
-    fs = "italic" if italic_scelto else "normal"
-    tt = "uppercase" if maiuscolo_pulito else "none"
-    renderizza_anteprima_stile(font_scelto, size_scelta, fw, fs, tt, colore_scelto)
+    col1, col2 = st.columns(2)
+    with col1:
+        color = st.color_picker("Main Color", "#FFFFFF")
+    with col2:
+        color_k = st.color_picker("Highlight", "#FFBF00", disabled=not karaoke)
 
-    st.markdown("")
+    fw = "bold" if bold else "normal"
+    fs = "italic" if italic else "normal"
+    tt = "uppercase" if uppercase else "none"
+    renderizza_anteprima_stile(font, size, fw, fs, tt, color)
+
     whisper_prompt = st.text_area("Context Prompt",
-                                  value="Intelligenza Artificiale, Yann LeCun, Demis Hassabis, LLM, Large Language Models, paper, deep learning, lavoro, DeepSeek, Claude, Gemini, ChatGPT, GLM, Kimi, Qwen, Gemma",
-                                  height=110)
+        value="Intelligenza Artificiale, Yann LeCun, Demis Hassabis, LLM, Large Language Models, paper, deep learning, lavoro, DeepSeek, Claude, Gemini, ChatGPT, GLM, Kimi, Qwen, Gemma",
+        height=110)
 
 
-# --- INIZIALIZZAZIONE session_state ---
-if "video_corrente" not in st.session_state:
-    st.session_state.video_corrente = None
-if "subs" not in st.session_state:
-    st.session_state.subs = pysrt.SubRipFile()
-if "durata_video" not in st.session_state:
-    st.session_state.durata_video = pysrt.SubRipTime(0)
-if "nome_ultimo_file" not in st.session_state:
-    st.session_state.nome_ultimo_file = None
+# ---------- INIZIALIZZAZIONE SESSIONE ----------
+defaults = {
+    "video_corrente": None,
+    "subs": pysrt.SubRipFile(),
+    "durata_video": pysrt.SubRipTime(0),
+    "nome_ultimo_file": None
+}
+for k, v in defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 
-# --- LAYOUT PRINCIPALE ---
-with st.container():
-    col_video, col_editor = st.columns([2, 5], gap="large")
+# ---------- LAYOUT PRINCIPALE ----------
+col_video, col_editor = st.columns([2, 5], gap="large")
 
-    with col_video:
-        # Se è presente un video, lo mostriamo
-        if st.session_state.video_corrente and os.path.exists(st.session_state.video_corrente):
-            with open(st.session_state.video_corrente, "rb") as f:
-                st.video(f.read())
-            renderizza_timer_video()
+with col_video:
+    if st.session_state.video_corrente and os.path.exists(st.session_state.video_corrente):
+        with open(st.session_state.video_corrente, "rb") as f:
+            st.video(f.read())
+        renderizza_timer_video()
 
-            # Pulsante per cambiare video
-            if st.button("Change Video", use_container_width=True):
-                st.session_state.video_corrente = None
-                st.session_state.subs = pysrt.SubRipFile()
-                st.session_state.durata_video = pysrt.SubRipTime(0)
-                st.rerun()
-        else:
-            # Riquadro di caricamento
-            st.markdown("")
-            uploaded_file = st.file_uploader(
-                "Scegli un file video",
-                type=["mp4", "mov", "avi", "mkv"],
-                label_visibility="collapsed"
-            )
-            if uploaded_file is not None:
-                with open(temp_upload_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-                st.session_state.nome_ultimo_file = uploaded_file.name
-                st.session_state.video_corrente = temp_upload_path
-                st.session_state.subs = pysrt.SubRipFile()
-                st.session_state.durata_video = ottieni_durata_video(temp_upload_path)
-                st.rerun()
+        if st.button("Change Video", use_container_width=True):
+            st.session_state.video_corrente = None
+            st.session_state.subs = pysrt.SubRipFile()
+            st.session_state.durata_video = pysrt.SubRipTime(0)
+            st.rerun()
+    else:
+        st.markdown("")
+        uploaded = st.file_uploader("Choose a  file video", type=["mp4","mov","avi","mkv"],
+                                    label_visibility="collapsed")
+        if uploaded:
+            with open(VIDEO_UPLOAD, "wb") as f:
+                f.write(uploaded.getbuffer())
+            st.session_state.nome_ultimo_file = uploaded.name
+            st.session_state.video_corrente = VIDEO_UPLOAD
+            st.session_state.subs = pysrt.SubRipFile()
+            st.session_state.durata_video = ottieni_durata_video(VIDEO_UPLOAD)
+            st.rerun()
 
-    with col_editor:
-        settings = {
-            'font': font_scelto, 'size': size_scelta, 'color': colore_scelto,
-            'bold': bold_scelto, 'italic': italic_scelto, 'outline': bordo_spessore,
-            'glow': glow_intensita, 'zoom': zoom_factor, 'karaoke': karaoke_attivo,
-            'colore_k': colore_karaoke, 'upper': maiuscolo_pulito,
-            'mode': modalita_visualizzazione
-        }
-        render_editor_interface(whisper_prompt, settings, esegui_operazione_bloccante)
+with col_editor:
+    settings = {
+        'font': font, 'size': size, 'color': color,
+        'bold': bold, 'italic': italic, 'outline': outline,
+        'glow': glow, 'zoom': zoom, 'karaoke': karaoke,
+        'colore_k': color_k, 'upper': uppercase, 'mode': display_mode,
+        'speed': speed_factor
+    }
+    render_editor_interface(whisper_prompt, settings, esegui_operazione)
