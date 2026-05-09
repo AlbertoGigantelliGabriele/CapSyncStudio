@@ -1,9 +1,16 @@
 import re
 import torch
 from faster_whisper import WhisperModel
+import streamlit as st
 import pysrt
 
-def genera_sottotitoli_da_video(video_path, custom_prompt=""):
+@st.cache_resource(show_spinner=False)
+def load_whisper_model():
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    compute = "float16" if device == "cuda" else "int8"
+    return WhisperModel("medium", device=device, compute_type=compute)
+
+def generate_subtitles_from_video(video_path, custom_prompt=""):
     subs = pysrt.SubRipFile()
 
     def sec_to_srt_time(seconds):
@@ -12,14 +19,12 @@ def genera_sottotitoli_da_video(video_path, custom_prompt=""):
         ms = int((seconds - int(seconds)) * 1000)
         return pysrt.SubRipTime(h, m, s, ms)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    compute = "float16" if device == "cuda" else "int8"
-    model = WhisperModel("medium", device=device, compute_type=compute)
+    model = load_whisper_model()
     segments, _ = model.transcribe(video_path, language="it", initial_prompt=custom_prompt,
                                    beam_size=5, word_timestamps=True)
 
     MAX_CHARS = 28
-    clean_re = re.compile(r"[,.?!;:']")
+    clean_re = re.compile(r"[,.?!;:]")
     idx = 1
     buf, buf_len, buf_start = [], 0, None
 
@@ -37,8 +42,9 @@ def genera_sottotitoli_da_video(video_path, custom_prompt=""):
     for segment in segments:
         for word in segment.words:
             cleaned = clean_re.sub('', word.word.strip())
+            if not cleaned:
+                continue
             lw = len(cleaned)
-
             if not buf:
                 buf_start = word.start
 

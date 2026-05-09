@@ -1,6 +1,6 @@
 import streamlit as st
 
-def applica_css_globale():
+def apply_global_css():
     st.markdown("""
         <style>
         video {
@@ -16,7 +16,7 @@ def applica_css_globale():
         </style>
     """, unsafe_allow_html=True)
 
-def renderizza_timer_video():
+def render_video_timer():
     st.html("""
         <style>
             #tbtn {
@@ -44,16 +44,16 @@ def renderizza_timer_video():
         </script>
     """, unsafe_allow_javascript=True)
 
-def renderizza_anteprima_stile(font_scelto, size_scelta, fw, fs, tt, colore_scelto):
+def render_style_preview(chosen_font, chosen_size, fw, fs, tt, chosen_color):
     st.markdown(f"""
         <div style="
             margin-top: 15px; padding: 15px;
             background-color: rgba(0, 0, 0, 0.25);
             border: 1px solid rgba(128,128,128,0.3);
             border-radius: 8px; text-align: center;
-            font-family: '{font_scelto}';
-            font-size: {size_scelta}px; font-weight: {fw}; font-style: {fs};
-            text-transform: {tt}; color: {colore_scelto};
+            font-family: '{chosen_font}';
+            font-size: {chosen_size}px; font-weight: {fw}; font-style: {fs};
+            text-transform: {tt}; color: {chosen_color};
         ">
             Subtitle Preview
         </div>
