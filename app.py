@@ -1,5 +1,6 @@
 import streamlit as st
 import pysrt
+import copy
 import os
 import tempfile
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
@@ -24,15 +25,29 @@ ASS_FILE = os.path.join(TMP, "temp_export.ass")
 apply_global_css()
 
 
-@st.dialog("Processing", width="small")
+@st.dialog("Processing", width="small", dismissible=False)
 def execute_operation(action, **kwargs):
     if action == "transcription":
-        with st.spinner("Transcribing"):
-            st.session_state.subs = generate_subtitles_from_video(
-                st.session_state.current_video,
-                custom_prompt=kwargs.get("prompt", "")
-            )
+        if st.session_state.get("original_subs") is not None:
+            st.session_state.subs = copy.deepcopy(st.session_state.original_subs)
             apply_continuous_timeline()
+            st.rerun()
+
+        prog_bar = st.progress(0.0)
+
+        def update_transcription_progress(pct):
+            prog_bar.progress(pct)
+
+        nuovi_subs = generate_subtitles_from_video(
+            st.session_state.current_video,
+            custom_prompt=kwargs.get("prompt", ""),
+            max_chars=kwargs.get("max_chars", 28),
+            progress_callback=update_transcription_progress
+        )
+
+        st.session_state.subs = nuovi_subs
+        st.session_state.original_subs = copy.deepcopy(nuovi_subs)
+        apply_continuous_timeline()
         st.rerun()
 
     elif action == "export":
@@ -81,6 +96,7 @@ with st.sidebar:
         step=0.05,
         format="%.2fx"
     )
+    max_chars_limit = st.slider("Max Subtitle Length", min_value=10, max_value=80, value=28, step=1)
     font_list = ["Arial","Verdana","Impact","Georgia","Trebuchet MS",
                  "Courier New","Comic Sans MS","Bradley Hand",
                  "Lucida Handwriting","Brush Script MT"]
@@ -110,14 +126,15 @@ with st.sidebar:
     render_style_preview(font, size, fw, fs, tt, color)
 
     whisper_prompt = st.text_area("Context Prompt",
-        value="Intelligenza Artificiale, Yann LeCun, Demis Hassabis, LLM, Large Language Models, paper, deep learning, lavoro, DeepSeek, Claude, Gemini, ChatGPT, GLM, Kimi, Qwen, Gemma",
-        height=110)
+                                  value="Intelligenza Artificiale, Yann LeCun, Demis Hassabis, LLM, Large Language Models, paper, deep learning, lavoro, DeepSeek, Claude, Gemini, ChatGPT, GLM, Kimi, Qwen, Gemma",
+                                  height=110)
 
 
 # ---------- SESSION INITIALIZATION ----------
 defaults = {
     "current_video": None,
     "subs": pysrt.SubRipFile(),
+    "original_subs": None,
     "video_duration": pysrt.SubRipTime(0),
     "last_filename": None,
     "final_video": None,
@@ -127,7 +144,6 @@ defaults = {
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
-
 
 # ---------- MAIN LAYOUT ----------
 col_video, col_editor = st.columns([2, 5], gap="large")
@@ -139,8 +155,7 @@ with col_video:
         video_to_show = st.session_state.current_video
 
     if video_to_show and os.path.exists(video_to_show):
-        with open(video_to_show, "rb") as f:
-            st.video(f.read())
+        st.video(video_to_show)
         render_video_timer()
 
         # If showing exported video
@@ -160,63 +175,49 @@ with col_video:
             if st.button("Change Video", use_container_width=True):
                 st.session_state.current_video = None
                 st.session_state.subs = pysrt.SubRipFile()
+                st.session_state.original_subs = None
                 st.session_state.video_duration = pysrt.SubRipTime(0)
                 st.session_state.final_video = None
                 st.session_state.upload_queue = []
                 st.session_state.upload_counter = 0
                 st.rerun()
     else:
-        # No active video: show multiple upload interface
+        # No active video: show native multiple upload interface
         st.markdown("")
-        # Single file upload
-        new_file = st.file_uploader(
-            "Select a video file",
+        uploaded_files = st.file_uploader(
+            "Select video file(s)",
             type=["mp4", "mov", "avi", "mkv"],
-            accept_multiple_files=False,
-            key=f"uploader_{st.session_state.upload_counter}"
+            accept_multiple_files=True
         )
-        if new_file is not None:
-            # Save temp file
-            temp_path = os.path.join(TMP, f"upload_{len(st.session_state.upload_queue)}_{new_file.name}")
-            with open(temp_path, "wb") as f:
-                f.write(new_file.getbuffer())
-            st.session_state.upload_queue.append(temp_path)
-            st.session_state.upload_counter += 1
-            st.rerun() # clears uploader for next file
 
-        # Show queue
-        if st.session_state.upload_queue:
-            st.write("**Videos in queue:**")
-            for idx, path in enumerate(st.session_state.upload_queue):
-                col1, col2 = st.columns([4,1])
-                with col1:
-                    st.text(os.path.basename(path))
-                with col2:
-                    if st.button("❌", key=f"remove_{idx}"):
-                        if os.path.exists(path):
-                            os.remove(path)
-                        st.session_state.upload_queue.pop(idx)
-                        st.rerun()
-
-            # Proceed button
+        if uploaded_files:
             if st.button("Merge/Proceed", use_container_width=True):
-                if len(st.session_state.upload_queue) == 1:
-                    concat_output = st.session_state.upload_queue[0]
+                # Processa i file in una sola operazione
+                saved_paths = []
+                for uf in uploaded_files:
+                    temp_path = os.path.join(TMP, uf.name)
+                    with open(temp_path, "wb") as f:
+                        f.write(uf.getbuffer())
+                    saved_paths.append(temp_path)
+
+                if len(saved_paths) == 1:
+                    concat_output = saved_paths[0]
                 else:
                     concat_output = os.path.join(TMP, "concatenated_video.mp4")
                     with st.spinner("Merging videos..."):
                         try:
-                            from src.core.video_processing import concatenate_videos
-                            concatenate_videos(st.session_state.upload_queue, concat_output)
+                            # Richiama la funzione di unione
+                            concatenate_videos(saved_paths, concat_output)
                         except RuntimeError as e:
                             st.error(f"Concatenation failed: {e}")
                             st.stop()
 
-                st.session_state.last_filename = os.path.basename(st.session_state.upload_queue[0])
+                st.session_state.last_filename = uploaded_files[0].name
                 st.session_state.current_video = concat_output
                 st.session_state.subs = pysrt.SubRipFile()
+                st.session_state.original_subs = None
                 st.session_state.video_duration = get_video_duration(concat_output)
-                st.session_state.upload_queue = []  # svuota la coda
+                # Un solo rerun quando tutto è pronto
                 st.rerun()
 
 with col_editor:
@@ -225,6 +226,7 @@ with col_editor:
         'bold': bold, 'italic': italic, 'outline': outline,
         'glow': glow, 'zoom': zoom, 'karaoke': karaoke,
         'color_k': color_k, 'upper': uppercase, 'mode': display_mode,
-        'speed': speed_factor
+        'speed': speed_factor,
+        'max_chars': max_chars_limit
     }
     render_editor_interface(whisper_prompt, settings, execute_operation)
