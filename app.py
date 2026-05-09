@@ -36,7 +36,7 @@ def execute_operation(action, **kwargs):
         st.rerun()
 
     elif action == "export":
-        progress_bar = st.progress(0, text="Encoding video...")
+        progress_bar = st.progress(value=0)
         def update_progress(pct):
             progress_bar.progress(pct)
 
