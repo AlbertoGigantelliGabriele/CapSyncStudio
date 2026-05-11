@@ -3,6 +3,38 @@ import streamlit as st
 import subprocess
 import pysrt
 import re
+import json
+
+
+def get_video_properties(video_path):
+    """Legge i metadati del video per capire se è HDR e quanto è grande."""
+    try:
+        cmd = [
+            'ffprobe', '-v', 'error', '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height,color_space,color_transfer',
+            '-of', 'json', video_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        info = json.loads(result.stdout)
+        stream = info.get('streams', [{}])[0]
+
+        width = stream.get('width', 0)
+        height = stream.get('height', 0)
+        color_space = stream.get('color_space', '')
+        color_transfer = stream.get('color_transfer', '')
+
+        # È HDR se il color space o transfer è BT.2020 o SMPTE2084
+        is_hdr = 'bt2020' in color_space or 'smpte2084' in color_transfer or 'arib-std-b67' in color_transfer
+
+        # Serve ridimensionare solo se il lato più lungo supera i 1920 pixel
+        needs_scaling = max(width, height) > 1920
+
+        return is_hdr, needs_scaling
+    except Exception as e:
+        # Se qualcosa va storto, assumiamo SDR e nessun ridimensionamento per sicurezza
+        print(f"Errore lettura metadati: {e}")
+        return False, False
+
 
 def concatenate_videos(file_paths, output_path):
     list_file = output_path + ".txt"
@@ -34,27 +66,51 @@ def apply_subtitles(video_input, ass_input, video_output, speed=1.0, callback_pr
     ass_in = os.path.basename(ass_input)
     video_out = os.path.basename(video_output)
 
-    if speed == 1.0:
-        # Normal command: only subtitles
-        cmd = [
-            'ffmpeg', '-y',
-            '-i', video_in,
-            '-vf', f"subtitles={ass_in}",
-            '-c:a', 'copy',
-            '-preset', 'fast',
-            video_out
-        ]
-    else:
+    # 1. Scopriamo con chi abbiamo a che fare
+    is_hdr, needs_scaling = get_video_properties(video_input)
+
+    # 2. Costruiamo la catena di filtri (-vf) come i pezzi di un puzzle
+    vf_filters = []
+
+    if needs_scaling:
+        # Scala in modo intelligente solo se il video è gigante
+        vf_filters.append("scale='if(gt(iw,ih),1920,-2)':'if(gt(iw,ih),-2,1920)'")
+
+    if is_hdr:
+        # Applica l'antidoto HDR solo se serve davvero
+        vf_filters.append("format=yuv420p,colorspace=all=bt709:iall=bt2020:fast=1")
+
+    # Aggiungiamo i sottotitoli (questo c'è sempre)
+    vf_filters.append(f"subtitles={ass_in}")
+
+    if speed != 1.0:
+        # Modifica la velocità visiva
         setpts = 1.0 / speed
-        cmd = [
-            'ffmpeg', '-y',
-            '-i', video_in,
-            '-vf', f"subtitles={ass_in},setpts={setpts}*PTS",
-            '-af', f"atempo={speed}",
-            '-c:a', 'aac',
-            '-preset', 'fast',
-            video_out
-        ]
+        vf_filters.append(f"setpts={setpts}*PTS")
+
+    # Uniamo tutti i pezzi separati da virgola
+    vf_string = ",".join(vf_filters)
+
+    # 3. Assembliamo il comando finale
+    cmd = [
+        'ffmpeg', '-y',
+        '-i', video_in,
+        '-threads', '0',
+        '-vf', vf_string,
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-crf', '23'
+    ]
+
+    if speed != 1.0:
+        # Se la velocità è diversa, dobbiamo elaborare anche l'audio
+        cmd.extend(['-af', f"atempo={speed}", '-c:a', 'aac'])
+    else:
+        # Altrimenti copiamo l'audio originale senza perdere tempo e qualità
+        cmd.extend(['-c:a', 'copy'])
+
+    # Aggiungiamo il file di output alla fine
+    cmd.append(video_out)
 
     try:
         process = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL,

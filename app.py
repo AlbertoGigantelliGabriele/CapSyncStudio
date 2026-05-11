@@ -7,7 +7,7 @@ os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
 from src.core.ai_transcription import generate_subtitles_from_video
 from src.core.timeline_manager import apply_continuous_timeline
-from src.utils.helpers import generate_ass_content
+from src.utils.helpers import generate_ass_content, fix_apostrophes_in_subs
 from src.core.video_processing import get_video_duration, apply_subtitles, concatenate_videos
 from src.ui.components import apply_global_css, render_video_timer, render_style_preview
 from src.ui.editor import render_editor_interface
@@ -38,15 +38,16 @@ def execute_operation(action, **kwargs):
         def update_transcription_progress(pct):
             prog_bar.progress(pct)
 
-        nuovi_subs = generate_subtitles_from_video(
+        new_subs = generate_subtitles_from_video(
             st.session_state.current_video,
             custom_prompt=kwargs.get("prompt", ""),
             max_chars=kwargs.get("max_chars", 28),
             progress_callback=update_transcription_progress
         )
 
-        st.session_state.subs = nuovi_subs
-        st.session_state.original_subs = copy.deepcopy(nuovi_subs)
+        new_subs = fix_apostrophes_in_subs(new_subs)
+        st.session_state.subs = new_subs
+        st.session_state.original_subs = copy.deepcopy(new_subs)
         apply_continuous_timeline()
         st.rerun()
 

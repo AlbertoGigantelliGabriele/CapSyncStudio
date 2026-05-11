@@ -94,3 +94,42 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 
     events_header = "\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     return header + events_header + "".join(events) + "\n"
+
+
+def fix_apostrophes_in_subs(subs):
+    """
+    Sposta l'apostrofo dall'inizio di una parola alla fine della precedente.
+    Converte: ["l", "'ombra"] -> ["l'", "ombra"]
+    """
+    for sub in subs:
+        if not hasattr(sub, 'word_timings') or not sub.word_timings:
+            continue
+
+        new_timings = []
+        for text, start, end in sub.word_timings:
+            # Togliamo eventuali spazi vuoti prima e dopo
+            clean_text = text.strip()
+
+            # Se la parola inizia con un apostrofo (normale o curvo)
+            if clean_text.startswith("'") or clean_text.startswith("’"):
+                # Rimuoviamo l'apostrofo dalla parola attuale
+                clean_text = clean_text[1:]
+
+                # Se c'è una parola precedente, le attacchiamo l'apostrofo
+                if new_timings:
+                    prev_text, prev_start, prev_end = new_timings[-1]
+                    new_timings[-1] = (prev_text + "'", prev_start, prev_end)
+
+            # Se dopo aver tolto l'apostrofo rimane ancora del testo (es. "ombra")
+            if clean_text:
+                # La aggiungiamo alla lista (magari rimettendo uno spazio davanti per estetica)
+                new_timings.append((clean_text, start, end))
+            else:
+                # Se la parola era *solo* un apostrofo isolato, allunghiamo il tempo della precedente
+                if new_timings:
+                    prev_text, prev_start, prev_end = new_timings[-1]
+                    new_timings[-1] = (prev_text, prev_start, end)
+
+        sub.word_timings = new_timings
+
+    return subs
