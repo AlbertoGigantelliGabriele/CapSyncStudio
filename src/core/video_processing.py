@@ -77,8 +77,9 @@ def apply_subtitles(video_input, ass_input, video_output, speed=1.0, callback_pr
         vf_filters.append("scale='if(gt(iw,ih),1920,-2)':'if(gt(iw,ih),-2,1920)'")
 
     if is_hdr:
-        # Applica l'antidoto HDR solo se serve davvero
-        vf_filters.append("format=yuv420p,colorspace=all=bt709:iall=bt2020:fast=1")
+        # Applica l'antidoto HDR: prima convertiamo lo spazio colore con tutta
+        # la profondità originale, SOLO DOPO lo portiamo a 8-bit (yuv420p)
+        vf_filters.append("colorspace=all=bt709:iall=bt2020:fast=1,format=yuv420p")
 
     # Aggiungiamo i sottotitoli (questo c'è sempre)
     vf_filters.append(f"subtitles={ass_in}")
@@ -92,6 +93,7 @@ def apply_subtitles(video_input, ass_input, video_output, speed=1.0, callback_pr
     vf_string = ",".join(vf_filters)
 
     # 3. Assembliamo il comando finale
+    # 3. Assembliamo il comando finale
     cmd = [
         'ffmpeg', '-y',
         '-i', video_in,
@@ -99,7 +101,12 @@ def apply_subtitles(video_input, ass_input, video_output, speed=1.0, callback_pr
         '-vf', vf_string,
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
-        '-crf', '23'
+        '-crf', '23',
+        # Forziamo le etichette dei metadati in SDR (BT.709)
+        # per evitare che i player si confondano e mostrino il video sbiadito
+        '-color_primaries', 'bt709',
+        '-color_trc', 'bt709',
+        '-colorspace', 'bt709'
     ]
 
     if speed != 1.0:
